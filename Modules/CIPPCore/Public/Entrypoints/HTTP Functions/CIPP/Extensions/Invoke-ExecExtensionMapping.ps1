@@ -36,6 +36,9 @@ Function Invoke-ExecExtensionMapping {
       'Sherweb' {
         $Result = Get-SherwebMapping -CIPPMapping $Table
       }
+      'IngramMicro' {
+        $Result = Get-IngramMicroMapping
+      }
       'HaloPSAFields' {
         $TicketTypes = Get-HaloTicketType
         $Outcomes = Get-HaloTicketOutcome
@@ -58,6 +61,12 @@ Function Invoke-ExecExtensionMapping {
       switch ($Request.Query.AddMapping) {
         'Sherweb' {
           $Result = Set-SherwebMapping -CIPPMapping $Table -APIName $APIName -Request $Request
+        }
+        'IngramMicro' {
+          $TenantId = $Request.Body.tenantId
+          $IngramMicroCustomerId = $Request.Body.ingramMicroCustomerId
+          $IngramMicroCustomerName = $Request.Body.ingramMicroCustomerName
+          $Result = Set-IngramMicroMapping -TenantId $TenantId -IngramMicroCustomerId $IngramMicroCustomerId -IngramMicroCustomerName $IngramMicroCustomerName
         }
         'HaloPSA' {
           $Result = Set-HaloMapping -CIPPMapping $Table -APIName $APIName -Request $Request

@@ -19,11 +19,26 @@ Function Invoke-ListCSPsku {
     $CurrentSkuOnly = $Request.Query.currentSkuOnly
 
     try {
-        if ($CurrentSkuOnly) {
-            $GraphRequest = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
+        # Check which CSP integration is enabled
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $ExtensionConfig = (Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json
+        
+        if ($ExtensionConfig.Sherweb.Enabled) {
+            if ($CurrentSkuOnly) {
+                $GraphRequest = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
+            } else {
+                $GraphRequest = Get-SherwebCatalog -TenantFilter $TenantFilter
+            }
+        } elseif ($ExtensionConfig.IngramMicro.Enabled) {
+            if ($CurrentSkuOnly) {
+                $GraphRequest = Get-IngramMicroCurrentSubscription -TenantFilter $TenantFilter
+            } else {
+                $GraphRequest = Get-IngramMicroCatalog -TenantFilter $TenantFilter
+            }
         } else {
-            $GraphRequest = Get-SherwebCatalog -TenantFilter $TenantFilter
+            throw 'No CSP integration is enabled'
         }
+        
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $GraphRequest = [PSCustomObject]@{

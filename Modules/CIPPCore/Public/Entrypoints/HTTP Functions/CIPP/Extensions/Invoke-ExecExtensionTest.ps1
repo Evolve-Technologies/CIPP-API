@@ -80,6 +80,14 @@ Function Invoke-ExecExtensionTest {
                     $Results = [pscustomobject]@{'Results' = 'Failed to connect to Sherweb, check your API credentials and try again.' }
                 }
             }
+            'IngramMicro' {
+                $TestResult = Test-IngramMicroConnection
+                if ($TestResult.Success) {
+                    $Results = [pscustomobject]@{'Results' = "Successfully Connected to Ingram Micro. $($TestResult.Message)" }
+                } else {
+                    $Results = [pscustomobject]@{'Results' = "Failed to connect to Ingram Micro: $($TestResult.Message)" }
+                }
+            }
             'HIBP' {
                 $ConnectionTest = Get-HIBPConnectionTest
                 $Results = [pscustomobject]@{'Results' = 'Successfully Connected to HIBP' }

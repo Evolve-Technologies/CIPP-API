@@ -20,20 +20,51 @@ function Invoke-ExecCSPLicense {
     $SKU = $Request.Body.SKU.value ?? $Request.Body.SKU
 
     try {
-        if ($Action -eq 'Add') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -add $Request.Body.Add
-        }
+        # Check which CSP integration is enabled
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $ExtensionConfig = (Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json
+        
+        if ($ExtensionConfig.Sherweb.Enabled) {
+            if ($Action -eq 'Add') {
+                $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -add $Request.Body.Add
+            }
 
-        if ($Action -eq 'Remove') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -remove $Request.Body.Remove
-        }
+            if ($Action -eq 'Remove') {
+                $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -remove $Request.Body.Remove
+            }
 
-        if ($Action -eq 'NewSub') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity
+            if ($Action -eq 'NewSub') {
+                $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity
+            }
+            if ($Action -eq 'Cancel') {
+                $null = Remove-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SubscriptionIds $Request.Body.SubscriptionIds
+            }
+        } elseif ($ExtensionConfig.IngramMicro.Enabled) {
+            if ($Action -eq 'Add') {
+                $null = Set-IngramMicroSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -add $Request.Body.Add
+            }
+
+            if ($Action -eq 'Remove') {
+                $null = Set-IngramMicroSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -remove $Request.Body.Remove
+            }
+
+            if ($Action -eq 'NewSub') {
+                $OrderParams = @{}
+                if ($Request.Body.OrderParameters) {
+                    $OrderParams = $Request.Body.OrderParameters
+                }
+                $null = Set-IngramMicroSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity -OrderParameters $OrderParams
+            }
+            if ($Action -eq 'Cancel') {
+                # IngramMicro uses subscription IDs directly
+                foreach ($SubscriptionId in $Request.Body.SubscriptionIds) {
+                    $null = Remove-IngramMicroSubscription -SubscriptionId $SubscriptionId
+                }
+            }
+        } else {
+            throw 'No CSP integration is enabled'
         }
-        if ($Action -eq 'Cancel') {
-            $null = Remove-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SubscriptionIds $Request.Body.SubscriptionIds
-        }
+        
         $Result = 'License change executed successfully.'
         $StatusCode = [HttpStatusCode]::OK
     } catch {

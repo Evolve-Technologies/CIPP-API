@@ -18,10 +18,21 @@ Function Invoke-ListCSPLicenses {
     $TenantFilter = $Request.Query.tenantFilter
 
     try {
-        $Result = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
+        # Check which CSP integration is enabled
+        $Table = Get-CIPPTable -TableName Extensionsconfig
+        $ExtensionConfig = (Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json
+        
+        if ($ExtensionConfig.Sherweb.Enabled) {
+            $Result = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
+        } elseif ($ExtensionConfig.IngramMicro.Enabled) {
+            $Result = Get-IngramMicroCurrentSubscription -TenantFilter $TenantFilter
+        } else {
+            throw 'No CSP integration is enabled'
+        }
+        
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        $Result = 'Unable to retrieve CSP licenses, ensure that you have enabled the Sherweb integration and mapped the tenant in the integration settings.'
+        $Result = 'Unable to retrieve CSP licenses, ensure that you have enabled a CSP integration (Sherweb or Ingram Micro) and mapped the tenant in the integration settings.'
         $StatusCode = [HttpStatusCode]::BadRequest
     }
 
