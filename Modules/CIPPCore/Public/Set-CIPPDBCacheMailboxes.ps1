@@ -23,32 +23,30 @@ function Set-CIPPDBCacheMailboxes {
             cmdParams = @{}
             Select    = $Select
         }
-        $Mailboxes = (New-ExoRequest @ExoRequest) | Select-Object id, ExchangeGuid, ArchiveGuid, WhenSoftDeleted,
-        @{ Name = 'UPN'; Expression = { $_.'UserPrincipalName' } },
-        @{ Name = 'displayName'; Expression = { $_.'DisplayName' } },
-        @{ Name = 'primarySmtpAddress'; Expression = { $_.'PrimarySMTPAddress' } },
-        @{ Name = 'recipientType'; Expression = { $_.'RecipientType' } },
-        @{ Name = 'recipientTypeDetails'; Expression = { $_.'RecipientTypeDetails' } },
-        @{ Name = 'AdditionalEmailAddresses'; Expression = { ($_.'EmailAddresses' | Where-Object { $_ -clike 'smtp:*' }).Replace('smtp:', '') -join ', ' } },
-        @{ Name = 'ForwardingSmtpAddress'; Expression = { $_.'ForwardingSmtpAddress' -replace 'smtp:', '' } },
-        @{ Name = 'InternalForwardingAddress'; Expression = { $_.'ForwardingAddress' } },
-        DeliverToMailboxAndForward,
-        HiddenFromAddressListsEnabled,
-        ExternalDirectoryObjectId,
-        MessageCopyForSendOnBehalfEnabled,
-        MessageCopyForSentAsEnabled
+        # Use Generic List for better memory efficiency with large datasets
+        $Mailboxes = [System.Collections.Generic.List[PSObject]]::new()
+        $RawMailboxes = New-ExoRequest @ExoRequest
 
-        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'Mailboxes' -Data $Mailboxes
-        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'Mailboxes' -Data $Mailboxes -Count
+        foreach ($Mailbox in $RawMailboxes) {
+            $Mailboxes.Add(($Mailbox | Select-Object id, ExchangeGuid, ArchiveGuid, WhenSoftDeleted,
+                    @{ Name = 'UPN'; Expression = { $_.'UserPrincipalName' } },
+                    @{ Name = 'displayName'; Expression = { $_.'DisplayName' } },
+                    @{ Name = 'primarySmtpAddress'; Expression = { $_.'PrimarySMTPAddress' } },
+                    @{ Name = 'recipientType'; Expression = { $_.'RecipientType' } },
+                    @{ Name = 'recipientTypeDetails'; Expression = { $_.'RecipientTypeDetails' } },
+                    @{ Name = 'AdditionalEmailAddresses'; Expression = { ($_.'EmailAddresses' | Where-Object { $_ -clike 'smtp:*' }).Replace('smtp:', '') -join ', ' } },
+                    @{ Name = 'ForwardingSmtpAddress'; Expression = { $_.'ForwardingSmtpAddress' -replace 'smtp:', '' } },
+                    @{ Name = 'InternalForwardingAddress'; Expression = { $_.'ForwardingAddress' } },
+                    DeliverToMailboxAndForward,
+                    HiddenFromAddressListsEnabled,
+                    ExternalDirectoryObjectId,
+                    MessageCopyForSendOnBehalfEnabled,
+                    MessageCopyForSentAsEnabled))
+        }
+
+        $Mailboxes | Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'Mailboxes' -AddCount
+
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Cached $($Mailboxes.Count) mailboxes successfully" -sev Debug
-
-        # Get CAS mailboxes
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching CAS mailboxes' -sev Debug
-        $CASMailboxes = New-GraphGetRequest -uri "https://outlook.office365.com/adminapi/beta/$($TenantFilter)/CasMailbox" -Tenantid $TenantFilter -scope 'ExchangeOnline' -noPagination $true
-        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'CASMailbox' -Data $CASMailboxes
-        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'CASMailbox' -Data $CASMailboxes -Count
-        $CASMailboxes = $null
-        Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Cached CAS mailboxes successfully' -sev Debug
 
         # Start orchestrator to cache mailbox permissions in batches
         $MailboxCount = ($Mailboxes | Measure-Object).Count
@@ -94,7 +92,6 @@ function Set-CIPPDBCacheMailboxes {
             $InputObject = [PSCustomObject]@{
                 Batch            = @($Batches)
                 OrchestratorName = "MailboxPermissions_$TenantFilter"
-                DurableMode      = 'Sequence'
                 PostExecution    = @{
                     FunctionName = 'StoreMailboxPermissions'
                     Parameters   = @{
@@ -107,6 +104,10 @@ function Set-CIPPDBCacheMailboxes {
         } else {
             Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'No mailboxes found to cache permissions for' -sev Debug
         }
+
+        # Clear mailbox data to free memory
+        $Mailboxes = $null
+        [System.GC]::Collect()
 
     } catch {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "Failed to cache mailboxes: $($_.Exception.Message)" -sev Error
